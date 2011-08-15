@@ -15,6 +15,29 @@ XPCOMUtils.defineLazyServiceGetter(this, "taskbar",
                                    "@mozilla.org/windows-taskbar;1",
                                    "nsIWinTaskbar");
 
+// Default preferences
+const PREF_BRANCH = "extensions.taskbaroverlaytester.";
+const PREFS = {
+  iconURL: "chrome://mozapps/skin/places/defaultFavicon.png",
+};
+
+function setDefaultPrefs() {
+  let branch = Services.prefs.getDefaultBranch(PREF_BRANCH);
+  for (let [key, val] in Iterator(PREFS)) {
+    switch (typeof val) {
+      case "boolean":
+        branch.setBoolPref(key, val);
+        break;
+      case "number":
+        branch.setIntPref(key, val);
+        break;
+      case "string":
+        branch.setCharPref(key, val);
+        break;
+    }
+  }
+}
+
 /**
  * Given an nsIURI referring to an image, calls the callback with an
  * imgIContainer for the image. Copied from WindowsPreviewPerTab.jsm.
@@ -65,6 +88,24 @@ var gWindowObserver = {
   } 
 };
 
+var gPrefObserver = {
+  observe: function gPrefObserver_observe(aSubject, aTopic, aData) {
+    if (aData == PREF_BRANCH + "iconURL")
+      setOverlayIconFromPref();
+  }
+};
+
+function setOverlayIconFromPref() {
+  let spec = Services.prefs.getCharPref(PREF_BRANCH + "iconURL");
+  let url = null;
+  try {
+    url = Services.io.newURI(spec, null, null);
+  } catch (ex) {
+    // The URL's malformed, so just ignore it.
+  }
+  setOverlayIcon(url);
+}
+
 var gIconURL = null;
 function setOverlayIcon(aIconURL) {
   gIconURL = aIconURL;
@@ -93,14 +134,18 @@ function updateOverlayIcon() {
 }
 
 function startup(aData, aReason) {
+  setDefaultPrefs();
+
   if (!taskbar.available)
     return;
   Services.ww.registerNotification(gWindowObserver);
+  Services.prefs.addObserver(PREF_BRANCH, gPrefObserver, false);
   findActiveWindow();
-  setOverlayIcon(faviconSvc.defaultFavicon);
+  setOverlayIconFromPref();
 }
 
 function shutdown(aData, aReason) {
   Services.ww.unregisterNotification(gWindowObserver);
+  Services.prefs.removeObserver(PREF_BRANCH, gPrefObserver);
   setOverlayIcon(null);
 }
