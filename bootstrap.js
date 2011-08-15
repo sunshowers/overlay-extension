@@ -30,21 +30,59 @@ function _imageFromURI(uri, callback) {
   });
 }
 
-function setOverlayIcon(aIconURL) {
-  // We're going to overlay the icon for the most recent browser/mail
-  // window. If there isn't one, God help you.
-  let win = Services.wm.getMostRecentWindow("navigator:browser") ||
-            Services.wm.getMostRecentWindow("mail:3pane");
+function findActiveWindow() {
+  // Look for an active window
+  let windows = Services.wm.getEnumerator(null);
+  let win = windows.hasMoreElements() ?
+    windows.getNext().QueryInterface(Ci.nsIDOMWindow) :
+    null;
+  setActiveWindow(win);
+}
 
+var gActiveWindow = null;
+function setActiveWindow(aWin) {
+  // We're assuming that if gActiveWindow is non-null, we only get called when
+  // it's closed.
+  gActiveWindow = aWin;
+  if (gActiveWindow)
+    updateOverlayIcon();
+}
+
+var gWindowObserver = {
+  observe: function gWindowObserver_observe(aSubject, aTopic, aData) {
+    // Look for domwindowopened and domwindowclosed messages
+    let win = aSubject.QueryInterface(Ci.nsIDOMWindow);
+    switch (aTopic) {
+    case "domwindowopened":
+      if (!gActiveWindow)
+        setActiveWindow(win);
+      break;
+    case "domwindowclosed":
+      if (win == gActiveWindow)
+        findActiveWindow();
+      break;
+    }
+  } 
+};
+
+var gIconURL = null;
+function setOverlayIcon(aIconURL) {
+  gIconURL = aIconURL;
+  if (gActiveWindow)
+    updateOverlayIcon();
+}
+
+// This should only be called if gActiveWindow is non-null
+function updateOverlayIcon() {
   // aka magic
-  let docshell = win.QueryInterface(Ci.nsIInterfaceRequestor)
+  let docshell = gActiveWindow.QueryInterface(Ci.nsIInterfaceRequestor)
     .getInterface(Ci.nsIWebNavigation).QueryInterface(Ci.nsIDocShellTreeItem)
     .treeOwner.QueryInterface(Ci.nsIInterfaceRequestor)
     .getInterface(Ci.nsIXULWindow).docShell;
 
   let controller = taskbar.getOverlayIconController(docshell);
-  if (aIconURL) {
-    _imageFromURI(aIconURL,
+  if (gIconURL) {
+    _imageFromURI(gIconURL,
       function (aIcon) {
         controller.setOverlayIcon(aIcon, "icon description string");
       });
@@ -57,9 +95,12 @@ function setOverlayIcon(aIconURL) {
 function startup(aData, aReason) {
   if (!taskbar.available)
     return;
+  Services.ww.registerNotification(gWindowObserver);
+  findActiveWindow();
   setOverlayIcon(faviconSvc.defaultFavicon);
 }
 
 function shutdown(aData, aReason) {
+  Services.ww.unregisterNotification(gWindowObserver);
   setOverlayIcon(null);
 }
