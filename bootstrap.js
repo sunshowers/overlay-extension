@@ -133,6 +133,9 @@ function updateOverlayIcon() {
   }
 }
 
+function install() {
+}
+
 function startup(aData, aReason) {
   setDefaultPrefs();
 
@@ -148,4 +151,7 @@ function shutdown(aData, aReason) {
   Services.ww.unregisterNotification(gWindowObserver);
   Services.prefs.removeObserver(PREF_BRANCH, gPrefObserver);
   setOverlayIcon(null);
+}
+
+function uninstall() {
 }
